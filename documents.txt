@@ -1,0 +1,3 @@
+Documents can be indexed by this search engine
+Multiple files provide better testing results
+The program ignores common stop words

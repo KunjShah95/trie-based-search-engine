@@ -1,0 +1,3 @@
+This is a simple example file for testing search engine functionality
+The search algorithm works on words and implements various features
+Features include search autocomplete and autocorrect capabilities
