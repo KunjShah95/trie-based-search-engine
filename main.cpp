@@ -8,8 +8,22 @@
 #include <cmath>
 #include <iomanip>
 #include <ctime>
+#include <vector>
+#include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+#include <chrono>
+#include <thread>
+#include <memory>
+#include <regex>
+#include <filesystem>
+#include <locale>
+#include <functional>
+#include <random>
+#include <atomic>
 
 using namespace std;
+namespace fs = std::filesystem;
 
 // Constants
 const int ALPHABET_SIZE = 26;
@@ -1021,6 +1035,111 @@ void processFile(const string &filename, Trie &trie)
     fclose(file);
 }
 
+// New utility functions using added libraries
+namespace Utils
+{
+    // Get current timestamp using chrono
+    string getTimestamp()
+    {
+        auto now = chrono::system_clock::now();
+        auto time = chrono::system_clock::to_time_t(now);
+        stringstream ss;
+        ss << put_time(localtime(&time), "%Y-%m-%d %H:%M:%S");
+        return ss.str();
+    }
+
+    // Get all files in a directory using filesystem
+    vector<string> getFilesInDirectory(const string &directory)
+    {
+        vector<string> files;
+        try
+        {
+            for (const auto &entry : fs::directory_iterator(directory))
+            {
+                if (entry.is_regular_file())
+                {
+                    files.push_back(entry.path().string());
+                }
+            }
+        }
+        catch (const fs::filesystem_error &e)
+        {
+            cerr << "Filesystem error: " << e.what() << endl;
+        }
+        return files;
+    }
+
+    // Regular expression word validation
+    bool isValidWord(const string &word)
+    {
+        static const regex wordRegex("^[a-zA-Z]+$");
+        return regex_match(word, wordRegex);
+    }
+
+    // Random word selection using random library
+    string getRandomWord(const vector<string> &words)
+    {
+        if (words.empty())
+            return "";
+
+        random_device rd;
+        mt19937 gen(rd());
+        uniform_int_distribution<> distrib(0, words.size() - 1);
+
+        return words[distrib(gen)];
+    }
+
+    // Multithreaded file processing
+    void processFilesParallel(const vector<string> &files, Trie &trie)
+    {
+        const unsigned int maxThreads = thread::hardware_concurrency();
+        const unsigned int numThreads = min(maxThreads, static_cast<unsigned int>(files.size()));
+
+        vector<thread> threads;
+        for (unsigned int i = 0; i < numThreads; i++)
+        {
+            threads.push_back(thread([&files, &trie, i, numThreads]()
+                                     {
+                for (size_t j = i; j < files.size(); j += numThreads) {
+                    processFile(files[j], trie);
+                } }));
+        }
+
+        for (auto &t : threads)
+        {
+            t.join();
+        }
+    }
+
+    // String utility for unicode handling with locale
+    string toUpperCase(const string &input)
+    {
+        string result = input;
+        locale loc("en_US.UTF-8");
+        for (auto &c : result)
+        {
+            c = toupper(c, loc);
+        }
+        return result;
+    }
+
+    // Smart pointer example for memory management
+    shared_ptr<vector<string>> createWordVector(const string &text)
+    {
+        auto words = make_shared<vector<string>>();
+        istringstream iss(text);
+        string word;
+        while (iss >> word)
+        {
+            if (isValidWord(word))
+            {
+                words->push_back(word);
+            }
+        }
+        return words;
+    }
+}
+
 // Menu system
 void displayMenu()
 {
@@ -1035,7 +1154,36 @@ void displayMenu()
     cout << "8. Search History\n";
     cout << "9. Export Results\n";
     cout << "10. Exit\n";
+    cout << "11. Background Auto-Indexing\n";
     cout << "Choice: ";
+}
+
+// Background indexing thread function
+void backgroundIndexing(Trie &trie, const string &directory, atomic<bool> &running)
+{
+    cout << "Background indexing started...\n";
+
+    while (running)
+    {
+        // Get all files in directory
+        vector<string> files = Utils::getFilesInDirectory(directory);
+
+        // Process any new files
+        for (const auto &file : files)
+        {
+            // Check if file is already indexed (this would need further implementation)
+            cout << "Background indexing: " << file << "\n";
+            processFile(file, trie);
+        }
+
+        // Wait for 30 seconds before checking again
+        for (int i = 0; i < 30 && running; i++)
+        {
+            this_thread::sleep_for(chrono::seconds(1));
+        }
+    }
+
+    cout << "Background indexing stopped.\n";
 }
 
 int main()
@@ -1043,26 +1191,81 @@ int main()
     Trie trie;
     SearchHistory history;
     string filename;
-    char fileListInput[MAX_FILES][MAX_WORD_LENGTH];
-    int fileCount = 0;
+    vector<string> indexedFiles;       // Use vector instead of arrays
+    unordered_set<string> uniqueFiles; // Track unique files
+    atomic<bool> backgroundRunning(false);
+    thread backgroundThread;
 
     cout << "==== Mini Search Engine ====\n";
-    cout << "Enter files to index (space separated): ";
-    while (cin >> filename && fileCount < MAX_FILES)
+
+    // Option to index all files in a directory
+    cout << "Would you like to: \n";
+    cout << "1. Enter specific files to index\n";
+    cout << "2. Index all files in a directory\n";
+    cout << "Choice: ";
+
+    int indexChoice;
+    cin >> indexChoice;
+
+    if (indexChoice == 1)
     {
-        strncpy(fileListInput[fileCount++], filename.c_str(), MAX_WORD_LENGTH);
-        if (cin.peek() == '\n')
-            break;
+        cout << "Enter files to index (space separated): ";
+        while (cin >> filename && indexedFiles.size() < MAX_FILES)
+        {
+            // Use unordered_set to avoid duplicates
+            if (uniqueFiles.find(filename) == uniqueFiles.end())
+            {
+                indexedFiles.push_back(filename);
+                uniqueFiles.insert(filename);
+            }
+
+            if (cin.peek() == '\n')
+                break;
+        }
+    }
+    else
+    {
+        string directory;
+        cout << "Enter directory path: ";
+        cin >> directory;
+
+        // Use filesystem library to get all files
+        indexedFiles = Utils::getFilesInDirectory(directory);
+
+        // Limit to MAX_FILES
+        if (indexedFiles.size() > MAX_FILES)
+        {
+            cout << "Found " << indexedFiles.size() << " files, but only the first "
+                 << MAX_FILES << " will be indexed.\n";
+            indexedFiles.resize(MAX_FILES);
+        }
     }
 
-    // Show processing message
-    cout << "Indexing files...\n";
-    for (int i = 0; i < fileCount; i++)
+    // Show processing message with timestamp
+    cout << "Indexing files... " << Utils::getTimestamp() << "\n";
+
+    // Option to use multithreaded processing
+    cout << "Use multithreaded processing? (y/n): ";
+    char multiChoice;
+    cin >> multiChoice;
+
+    if (tolower(multiChoice) == 'y')
     {
-        cout << "Processing: " << fileListInput[i] << "...\n";
-        processFile(fileListInput[i], trie);
+        // Use multithreaded processing
+        Utils::processFilesParallel(indexedFiles, trie);
     }
-    cout << "Indexing complete! " << fileCount << " files processed.\n";
+    else
+    {
+        // Use regular processing
+        for (const auto &file : indexedFiles)
+        {
+            cout << "Processing: " << file << "...\n";
+            processFile(file, trie);
+        }
+    }
+
+    cout << "Indexing complete! " << indexedFiles.size() << " files processed. "
+         << Utils::getTimestamp() << "\n";
 
     while (true)
     {
@@ -1078,18 +1281,47 @@ int main()
         }
 
         if (choice == 10)
+        {
+            // Stop background thread if running
+            if (backgroundRunning)
+            {
+                backgroundRunning = false;
+                if (backgroundThread.joinable())
+                {
+                    backgroundThread.join();
+                }
+            }
             break;
+        }
 
         string input;
         switch (choice)
         {
         case 1: // Search Word
+        {
             cout << "Enter word to search: ";
             cin >> input;
-            history.addQuery(input.c_str());
-            if (trie.search(input.c_str()))
+
+            // Validate word using regex
+            if (!Utils::isValidWord(input))
             {
-                cout << "Word found!\n";
+                cout << "Invalid word format. Please enter alphabetic characters only.\n";
+                break;
+            }
+
+            history.addQuery(input.c_str());
+
+            // Start a timer to measure search performance
+            auto startTime = chrono::high_resolution_clock::now();
+
+            bool found = trie.search(input.c_str());
+
+            auto endTime = chrono::high_resolution_clock::now();
+            auto duration = chrono::duration_cast<chrono::microseconds>(endTime - startTime);
+
+            if (found)
+            {
+                cout << "Word found! (Search took " << duration.count() << " microseconds)\n";
 
                 // Show basic word details
                 char result[MAX_RESULTS][MAX_WORD_LENGTH];
@@ -1102,10 +1334,23 @@ int main()
             }
             else
             {
-                cout << "Word not found.\n";
+                cout << "Word not found. (Search took " << duration.count() << " microseconds)\n";
+
+                // Check for spelling suggestions
+                char spellSuggestions[MAX_SUGGESTIONS][MAX_WORD_LENGTH];
+                int suggestionCount = 0;
+                if (trie.spellCheck(input.c_str(), spellSuggestions, suggestionCount))
+                {
+                    cout << "Did you mean:\n";
+                    for (int i = 0; i < min(3, suggestionCount); i++)
+                    {
+                        cout << (i + 1) << ". " << spellSuggestions[i] << endl;
+                    }
+                }
                 cout << "Try using autocomplete to find similar words.\n";
             }
-            break;
+        }
+        break;
 
         case 2: // Partial Search
             cout << "Enter partial word to search: ";
@@ -1267,16 +1512,111 @@ int main()
         }
 
         case 8: // Search History
+        {
             history.display();
-            break;
+
+            // Option to clear history
+            cout << "Clear search history? (y/n): ";
+            char clearChoice;
+            cin >> clearChoice;
+
+            if (tolower(clearChoice) == 'y')
+            {
+                history = SearchHistory(); // Reset the history
+                cout << "Search history cleared.\n";
+            }
+        }
+        break;
 
         case 9: // Export Results
         {
             string exportType;
-            cout << "What would you like to export (last/history/word)? ";
+            cout << "What would you like to export (last/history/word/json)? ";
             cin >> exportType;
 
-            if (exportType == "last" && history.count > 0)
+            if (exportType == "json")
+            {
+                // New JSON export feature
+                string searchQuery;
+                cout << "Enter search term to export as JSON: ";
+                cin.ignore();
+                getline(cin, searchQuery);
+
+                // Get results
+                char exportData[MAX_RESULTS][MAX_WORD_LENGTH];
+                int exportCount = 0;
+
+                if (searchQuery.find(' ') != string::npos)
+                {
+                    // Advanced search for phrases
+                    trie.advancedSearch(searchQuery.c_str(), exportData, exportCount);
+                }
+                else
+                {
+                    // Regular word search
+                    trie.getWordDetails(searchQuery.c_str(), exportData, exportCount);
+                }
+
+                string filename;
+                cout << "Enter filename to export JSON (without extension): ";
+                cin >> filename;
+
+                // Ensure .json extension
+                if (filename.length() < 5 || filename.substr(filename.length() - 5) != ".json")
+                {
+                    filename += ".json";
+                }
+
+                // Create JSON file
+                ofstream jsonFile(filename);
+                if (!jsonFile.is_open())
+                {
+                    cout << "Failed to create JSON file.\n";
+                    break;
+                }
+
+                // Write JSON format
+                jsonFile << "{\n";
+                jsonFile << "  \"query\": \"" << searchQuery << "\",\n";
+                jsonFile << "  \"timestamp\": \"" << Utils::getTimestamp() << "\",\n";
+                jsonFile << "  \"resultCount\": " << exportCount << ",\n";
+                jsonFile << "  \"results\": [\n";
+
+                for (int i = 0; i < exportCount; i++)
+                {
+                    jsonFile << "    {\n";
+                    jsonFile << "      \"index\": " << (i + 1) << ",\n";
+
+                    // Escape quotes and backslashes in the result
+                    string resultText = exportData[i];
+                    string escapedResult;
+                    for (char c : resultText)
+                    {
+                        if (c == '\"' || c == '\\')
+                        {
+                            escapedResult += '\\';
+                        }
+                        escapedResult += c;
+                    }
+
+                    jsonFile << "      \"text\": \"" << escapedResult << "\"";
+                    jsonFile << "\n    }";
+
+                    if (i < exportCount - 1)
+                    {
+                        jsonFile << ",";
+                    }
+                    jsonFile << "\n";
+                }
+
+                jsonFile << "  ]\n";
+                jsonFile << "}\n";
+
+                jsonFile.close();
+
+                cout << "Results exported successfully to JSON: " << filename << endl;
+            }
+            else if (exportType == "last" && history.count > 0)
             {
                 // Export results for last search
                 string lastQuery = history.queries[history.count - 1];
@@ -1492,8 +1832,37 @@ int main()
         }
         break;
 
+        case 11: // Background Auto-Indexing
+        {
+            if (backgroundRunning)
+            {
+                // Stop existing background indexing
+                backgroundRunning = false;
+                if (backgroundThread.joinable())
+                {
+                    backgroundThread.join();
+                }
+                cout << "Background indexing stopped.\n";
+            }
+            else
+            {
+                // Start background indexing
+                string directory;
+                cout << "Enter directory to watch for new files: ";
+                cin >> directory;
+
+                backgroundRunning = true;
+                backgroundThread = thread(backgroundIndexing, ref(trie), directory, ref(backgroundRunning));
+
+                // Detach the thread to allow it to run independently
+                backgroundThread.detach();
+                cout << "Background indexing started in directory: " << directory << "\n";
+            }
+            break;
+        }
+
         default:
-            cout << "Invalid choice. Please select an option from 1-10.\n";
+            cout << "Invalid choice. Please select an option from 1-11.\n";
         }
 
         // Add a pause before showing menu again
