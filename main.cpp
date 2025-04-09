@@ -728,7 +728,14 @@ public:
     // Export search results to file
     bool exportResults(const char *filename, const char results[MAX_RESULTS][MAX_WORD_LENGTH], int resultCount)
     {
-        FILE *file = fopen(filename, "w");
+        // Ensure the file has .txt extension
+        string txtFilename = filename;
+        if (txtFilename.length() < 4 || txtFilename.substr(txtFilename.length() - 4) != ".txt")
+        {
+            txtFilename += ".txt";
+        }
+
+        FILE *file = fopen(txtFilename.c_str(), "w");
         if (!file)
         {
             return false;
@@ -758,7 +765,14 @@ public:
     // Export search results to CSV
     bool exportToCSV(const char *filename, const char results[MAX_RESULTS][MAX_WORD_LENGTH], int resultCount)
     {
-        FILE *file = fopen(filename, "w");
+        // Ensure the file has .csv extension
+        string csvFilename = filename;
+        if (csvFilename.length() < 4 || csvFilename.substr(csvFilename.length() - 4) != ".csv")
+        {
+            csvFilename += ".csv";
+        }
+
+        FILE *file = fopen(csvFilename.c_str(), "w");
         if (!file)
         {
             return false;
@@ -1261,46 +1275,81 @@ int main()
                     trie.partialSearch(lastWord, exportData, exportCount);
                 }
 
-                cout << "Enter filename to export results: ";
-                cin >> input;
+                string filename;
+                cout << "Enter filename to export results (without extension): ";
+                cin >> filename;
 
                 string format;
                 cout << "Export format (txt/csv/pdf): ";
                 cin >> format;
 
+                // Generate export path based on format
+                string exportPath = filename;
                 bool exportSuccess = false;
+
                 if (format == "csv")
                 {
-                    exportSuccess = trie.exportToCSV(input.c_str(), exportData, exportCount);
+                    // Add .csv extension if not present
+                    if (exportPath.length() < 4 || exportPath.substr(exportPath.length() - 4) != ".csv")
+                    {
+                        exportPath += ".csv";
+                    }
+                    exportSuccess = trie.exportToCSV(exportPath.c_str(), exportData, exportCount);
                 }
                 else if (format == "pdf")
                 {
-                    exportSuccess = trie.exportToPDF(input.c_str(), exportData, exportCount);
+                    // Add .pdf extension if not present
+                    if (exportPath.length() < 4 || exportPath.substr(exportPath.length() - 4) != ".pdf")
+                    {
+                        exportPath += ".pdf";
+                    }
+                    exportSuccess = trie.exportToPDF(exportPath.c_str(), exportData, exportCount);
                 }
                 else
                 {
                     // Default to txt format
-                    exportSuccess = trie.exportResults(input.c_str(), exportData, exportCount);
+                    if (exportPath.length() < 4 || exportPath.substr(exportPath.length() - 4) != ".txt")
+                    {
+                        exportPath += ".txt";
+                    }
+                    exportSuccess = trie.exportResults(exportPath.c_str(), exportData, exportCount);
                 }
 
                 if (exportSuccess)
                 {
-                    cout << "Results exported successfully to " << input << " in " << format << " format" << endl;
+                    cout << "Results exported successfully to: " << exportPath << endl;
+                    cout << "File is ready to be downloaded in " << format << " format." << endl;
                 }
                 else
                 {
-                    cout << "Failed to export results.\n";
+                    cout << "Failed to export results. Please check file permissions or disk space." << endl;
                 }
             }
             else if (exportType == "history")
             {
                 // Export search history
-                cout << "Enter filename to export history: ";
-                cin >> input;
+                string filename;
+                cout << "Enter filename to export history (without extension): ";
+                cin >> filename;
 
                 string format;
                 cout << "Export format (txt/csv/pdf): ";
                 cin >> format;
+
+                // Generate export path based on format
+                string exportPath = filename;
+                if (format == "csv" && (exportPath.length() < 4 || exportPath.substr(exportPath.length() - 4) != ".csv"))
+                {
+                    exportPath += ".csv";
+                }
+                else if (format == "pdf" && (exportPath.length() < 4 || exportPath.substr(exportPath.length() - 4) != ".pdf"))
+                {
+                    exportPath += ".pdf";
+                }
+                else if (format != "csv" && format != "pdf" && (exportPath.length() < 4 || exportPath.substr(exportPath.length() - 4) != ".txt"))
+                {
+                    exportPath += ".txt";
+                }
 
                 // Prepare history data for export
                 char historyData[MAX_RESULTS][MAX_WORD_LENGTH];
@@ -1314,16 +1363,16 @@ int main()
                 bool exportSuccess = false;
                 if (format == "csv")
                 {
-                    exportSuccess = trie.exportToCSV(input.c_str(), historyData, historyCount);
+                    exportSuccess = trie.exportToCSV(exportPath.c_str(), historyData, historyCount);
                 }
                 else if (format == "pdf")
                 {
-                    exportSuccess = trie.exportToPDF(input.c_str(), historyData, historyCount);
+                    exportSuccess = trie.exportToPDF(exportPath.c_str(), historyData, historyCount);
                 }
                 else
                 {
                     // Fallback to regular text file export
-                    FILE *file = fopen(input.c_str(), "w");
+                    FILE *file = fopen(exportPath.c_str(), "w");
                     if (file)
                     {
                         fprintf(file, "Search History\n");
@@ -1341,52 +1390,76 @@ int main()
 
                 if (exportSuccess)
                 {
-                    cout << "History exported successfully to " << input << " in " << format << " format" << endl;
+                    cout << "History exported successfully to: " << exportPath << endl;
+                    cout << "File is ready to be downloaded in " << format << " format." << endl;
                 }
                 else
                 {
-                    cout << "Failed to export history.\n";
+                    cout << "Failed to export history. Please check file permissions or disk space." << endl;
                 }
             }
             else if (exportType == "word")
             {
                 // Export details for a specific word
                 cout << "Enter word to export details: ";
-                cin >> input;
+                string wordToExport;
+                cin >> wordToExport;
 
                 char wordDetails[MAX_RESULTS][MAX_WORD_LENGTH];
                 int detailCount = 0;
-                trie.getWordDetails(input.c_str(), wordDetails, detailCount);
+                trie.getWordDetails(wordToExport.c_str(), wordDetails, detailCount);
 
-                cout << "Enter filename for export: ";
-                string exportFile;
-                cin >> exportFile;
+                if (detailCount == 0)
+                {
+                    cout << "No details found for the word '" << wordToExport << "'. Nothing to export." << endl;
+                    break;
+                }
+
+                string filename;
+                cout << "Enter filename for export (without extension): ";
+                cin >> filename;
 
                 string format;
                 cout << "Export format (txt/csv/pdf): ";
                 cin >> format;
 
+                // Generate export path based on format
+                string exportPath = filename;
+                if (format == "csv" && (exportPath.length() < 4 || exportPath.substr(exportPath.length() - 4) != ".csv"))
+                {
+                    exportPath += ".csv";
+                }
+                else if (format == "pdf" && (exportPath.length() < 4 || exportPath.substr(exportPath.length() - 4) != ".pdf"))
+                {
+                    exportPath += ".pdf";
+                }
+                else if (format != "csv" && format != "pdf" && (exportPath.length() < 4 || exportPath.substr(exportPath.length() - 4) != ".txt"))
+                {
+                    exportPath += ".txt";
+                }
+
                 bool exportSuccess = false;
                 if (format == "csv")
                 {
-                    exportSuccess = trie.exportToCSV(exportFile.c_str(), wordDetails, detailCount);
+                    exportSuccess = trie.exportToCSV(exportPath.c_str(), wordDetails, detailCount);
                 }
                 else if (format == "pdf")
                 {
-                    exportSuccess = trie.exportToPDF(exportFile.c_str(), wordDetails, detailCount);
+                    exportSuccess = trie.exportToPDF(exportPath.c_str(), wordDetails, detailCount);
                 }
                 else
                 {
-                    exportSuccess = trie.exportResults(exportFile.c_str(), wordDetails, detailCount);
+                    exportSuccess = trie.exportResults(exportPath.c_str(), wordDetails, detailCount);
                 }
 
                 if (exportSuccess)
                 {
-                    cout << "Word details exported successfully to " << exportFile << " in " << format << " format" << endl;
+                    cout << "Word details for '" << wordToExport << "' exported successfully to: " << exportPath << endl;
+                    cout << "File is ready to be downloaded in " << format << " format." << endl;
                 }
                 else
                 {
-                    cout << "Failed to export word details.\n";
+                    cout << "Failed to export word details. Please check file permissions or disk space." << endl;
                 }
             }
             else
