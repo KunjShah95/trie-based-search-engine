@@ -826,7 +826,7 @@ public:
             pdfFilename += ".pdf";
         }
 
-        FILE *file = fopen(pdfFilename.c_str(), "w");
+        FILE *file = fopen(pdfFilename.c_str(), "wb"); // Use binary mode for better compatibility
         if (!file)
         {
             return false;
@@ -842,6 +842,7 @@ public:
         fprintf(file, "%%PDF-1.4\n");
 
         // Object 1: Catalog
+        long obj1Pos = ftell(file);
         fprintf(file, "1 0 obj\n");
         fprintf(file, "<<\n");
         fprintf(file, "/Type /Catalog\n");
@@ -850,6 +851,7 @@ public:
         fprintf(file, "endobj\n");
 
         // Object 2: Pages
+        long obj2Pos = ftell(file);
         fprintf(file, "2 0 obj\n");
         fprintf(file, "<<\n");
         fprintf(file, "/Type /Pages\n");
@@ -859,6 +861,7 @@ public:
         fprintf(file, "endobj\n");
 
         // Object 3: Page
+        long obj3Pos = ftell(file);
         fprintf(file, "3 0 obj\n");
         fprintf(file, "<<\n");
         fprintf(file, "/Type /Page\n");
@@ -874,47 +877,67 @@ public:
         fprintf(file, "endobj\n");
 
         // Object 4: Font
+        long obj4Pos = ftell(file);
         fprintf(file, "4 0 obj\n");
         fprintf(file, "<<\n");
         fprintf(file, "/Type /Font\n");
         fprintf(file, "/Subtype /Type1\n");
         fprintf(file, "/BaseFont /Helvetica\n");
+        fprintf(file, "/Encoding /WinAnsiEncoding\n");
         fprintf(file, ">>\n");
         fprintf(file, "endobj\n");
 
-        // Object 5: Content Stream
         // Build content string
         string content = "BT\n";
-        content += "/F1 12 Tf\n";
-        content += "50 700 Td\n";
+        content += "/F1 14 Tf\n";
+        content += "50 750 Td\n";
         content += "(Mini Search Engine - Export Results) Tj\n";
-        content += "0 -20 Td\n";
-        content += "(" + string(timeStr) + ") Tj\n";
-        content += "0 -40 Td\n";
+        content += "0 -25 Td\n";
+        content += "/F1 10 Tf\n";
+        content += "(Generated on: " + string(timeStr) + ") Tj\n";
+        content += "0 -30 Td\n";
 
-        for (int i = 0; i < resultCount; i++)
+        // Set up a table-like format for results
+        int yPos = 680; // Starting Y position for results
+
+        for (int i = 0; i < resultCount && i < MAX_RESULTS; i++)
         {
+            // Check if we need to start a new page (simplified - not implementing multi-page)
+            if (yPos < 100)
+            {
+                break;
+            }
+
             // Sanitize the content for PDF (escape special characters)
-            string line = "(" + to_string(i + 1) + ". ";
+            string line = "";
+            line += "50 " + to_string(yPos) + " Td\n";
+            line += "(";
+
+            // Create a formatted row
+            string rowText = to_string(i + 1) + ". ";
             for (int j = 0; results[i][j] != '\0'; j++)
             {
-                if (results[i][j] == '(' || results[i][j] == ')' || results[i][j] == '\\')
+                char ch = results[i][j];
+                if (ch == '(' || ch == ')' || ch == '\\')
                 {
-                    line += "\\";
+                    rowText += "\\";
                 }
-                line += results[i][j];
+                rowText += ch;
             }
+            line += rowText;
             line += ") Tj\n";
-            line += "0 -15 Td\n";
 
             content += line;
+            yPos -= 20; // Move down for next line
         }
 
-        content += "0 -20 Td\n";
+        // Add total results count at the bottom
+        content += "50 50 Td\n";
         content += "(Total Results: " + to_string(resultCount) + ") Tj\n";
         content += "ET";
 
-        // Write content stream
+        // Object 5: Content Stream
+        long obj5Pos = ftell(file);
         fprintf(file, "5 0 obj\n");
         fprintf(file, "<<\n");
         fprintf(file, "/Length %zu\n", content.length());
@@ -929,11 +952,11 @@ public:
         fprintf(file, "xref\n");
         fprintf(file, "0 6\n");
         fprintf(file, "0000000000 65535 f\n");
-        fprintf(file, "0000000010 00000 n\n"); // Approximate offsets
-        fprintf(file, "0000000079 00000 n\n");
-        fprintf(file, "0000000173 00000 n\n");
-        fprintf(file, "0000000359 00000 n\n");
-        fprintf(file, "0000000457 00000 n\n");
+        fprintf(file, "%010ld 00000 n\n", obj1Pos);
+        fprintf(file, "%010ld 00000 n\n", obj2Pos);
+        fprintf(file, "%010ld 00000 n\n", obj3Pos);
+        fprintf(file, "%010ld 00000 n\n", obj4Pos);
+        fprintf(file, "%010ld 00000 n\n", obj5Pos);
 
         // Trailer
         fprintf(file, "trailer\n");
