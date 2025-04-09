@@ -754,6 +754,186 @@ public:
         fclose(file);
         return true;
     }
+
+    // Export search results to CSV
+    bool exportToCSV(const char *filename, const char results[MAX_RESULTS][MAX_WORD_LENGTH], int resultCount)
+    {
+        FILE *file = fopen(filename, "w");
+        if (!file)
+        {
+            return false;
+        }
+
+        // Get the current date and time
+        time_t now = time(0);
+        struct tm *timeinfo = localtime(&now);
+        char timeStr[80];
+        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+        // Write CSV header
+        fprintf(file, "Index,Result,Timestamp\n");
+
+        // Write data rows
+        for (int i = 0; i < resultCount; i++)
+        {
+            // Escape any commas in the result
+            char escapedResult[MAX_WORD_LENGTH * 2];
+            int j = 0, k = 0;
+            while (results[i][j] != '\0')
+            {
+                if (results[i][j] == ',')
+                {
+                    escapedResult[k++] = '"';
+                    escapedResult[k++] = results[i][j];
+                    escapedResult[k++] = '"';
+                }
+                else
+                {
+                    escapedResult[k++] = results[i][j];
+                }
+                j++;
+            }
+            escapedResult[k] = '\0';
+
+            fprintf(file, "%d,%s,%s\n", i + 1, escapedResult, timeStr);
+        }
+
+        fclose(file);
+        return true;
+    }
+
+    // Export word details to PDF-like text file (simplified PDF representation)
+    bool exportToPDF(const char *filename, const char results[MAX_RESULTS][MAX_WORD_LENGTH], int resultCount)
+    {
+        // Ensure the file has .pdf extension
+        string pdfFilename = filename;
+        if (pdfFilename.length() < 4 || pdfFilename.substr(pdfFilename.length() - 4) != ".pdf")
+        {
+            pdfFilename += ".pdf";
+        }
+
+        FILE *file = fopen(pdfFilename.c_str(), "w");
+        if (!file)
+        {
+            return false;
+        }
+
+        // Get the current date and time
+        time_t now = time(0);
+        struct tm *timeinfo = localtime(&now);
+        char timeStr[80];
+        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+        // Basic PDF structure (simplified)
+        fprintf(file, "%%PDF-1.4\n");
+
+        // Object 1: Catalog
+        fprintf(file, "1 0 obj\n");
+        fprintf(file, "<<\n");
+        fprintf(file, "/Type /Catalog\n");
+        fprintf(file, "/Pages 2 0 R\n");
+        fprintf(file, ">>\n");
+        fprintf(file, "endobj\n");
+
+        // Object 2: Pages
+        fprintf(file, "2 0 obj\n");
+        fprintf(file, "<<\n");
+        fprintf(file, "/Type /Pages\n");
+        fprintf(file, "/Kids [3 0 R]\n");
+        fprintf(file, "/Count 1\n");
+        fprintf(file, ">>\n");
+        fprintf(file, "endobj\n");
+
+        // Object 3: Page
+        fprintf(file, "3 0 obj\n");
+        fprintf(file, "<<\n");
+        fprintf(file, "/Type /Page\n");
+        fprintf(file, "/Parent 2 0 R\n");
+        fprintf(file, "/Resources <<\n");
+        fprintf(file, "  /Font <<\n");
+        fprintf(file, "    /F1 4 0 R\n");
+        fprintf(file, "  >>\n");
+        fprintf(file, ">>\n");
+        fprintf(file, "/MediaBox [0 0 612 792]\n");
+        fprintf(file, "/Contents 5 0 R\n");
+        fprintf(file, ">>\n");
+        fprintf(file, "endobj\n");
+
+        // Object 4: Font
+        fprintf(file, "4 0 obj\n");
+        fprintf(file, "<<\n");
+        fprintf(file, "/Type /Font\n");
+        fprintf(file, "/Subtype /Type1\n");
+        fprintf(file, "/BaseFont /Helvetica\n");
+        fprintf(file, ">>\n");
+        fprintf(file, "endobj\n");
+
+        // Object 5: Content Stream
+        // Build content string
+        string content = "BT\n";
+        content += "/F1 12 Tf\n";
+        content += "50 700 Td\n";
+        content += "(Mini Search Engine - Export Results) Tj\n";
+        content += "0 -20 Td\n";
+        content += "(" + string(timeStr) + ") Tj\n";
+        content += "0 -40 Td\n";
+
+        for (int i = 0; i < resultCount; i++)
+        {
+            // Sanitize the content for PDF (escape special characters)
+            string line = "(" + to_string(i + 1) + ". ";
+            for (int j = 0; results[i][j] != '\0'; j++)
+            {
+                if (results[i][j] == '(' || results[i][j] == ')' || results[i][j] == '\\')
+                {
+                    line += "\\";
+                }
+                line += results[i][j];
+            }
+            line += ") Tj\n";
+            line += "0 -15 Td\n";
+
+            content += line;
+        }
+
+        content += "0 -20 Td\n";
+        content += "(Total Results: " + to_string(resultCount) + ") Tj\n";
+        content += "ET";
+
+        // Write content stream
+        fprintf(file, "5 0 obj\n");
+        fprintf(file, "<<\n");
+        fprintf(file, "/Length %zu\n", content.length());
+        fprintf(file, ">>\n");
+        fprintf(file, "stream\n");
+        fprintf(file, "%s\n", content.c_str());
+        fprintf(file, "endstream\n");
+        fprintf(file, "endobj\n");
+
+        // Cross-reference table
+        long xref_pos = ftell(file);
+        fprintf(file, "xref\n");
+        fprintf(file, "0 6\n");
+        fprintf(file, "0000000000 65535 f\n");
+        fprintf(file, "0000000010 00000 n\n"); // Approximate offsets
+        fprintf(file, "0000000079 00000 n\n");
+        fprintf(file, "0000000173 00000 n\n");
+        fprintf(file, "0000000359 00000 n\n");
+        fprintf(file, "0000000457 00000 n\n");
+
+        // Trailer
+        fprintf(file, "trailer\n");
+        fprintf(file, "<<\n");
+        fprintf(file, "/Size 6\n");
+        fprintf(file, "/Root 1 0 R\n");
+        fprintf(file, ">>\n");
+        fprintf(file, "startxref\n");
+        fprintf(file, "%ld\n", xref_pos);
+        fprintf(file, "%%%%EOF\n");
+
+        fclose(file);
+        return true;
+    }
 };
 
 // File processing functions
@@ -1084,9 +1264,28 @@ int main()
                 cout << "Enter filename to export results: ";
                 cin >> input;
 
-                if (trie.exportResults(input.c_str(), exportData, exportCount))
+                string format;
+                cout << "Export format (txt/csv/pdf): ";
+                cin >> format;
+
+                bool exportSuccess = false;
+                if (format == "csv")
                 {
-                    cout << "Results exported successfully to " << input << endl;
+                    exportSuccess = trie.exportToCSV(input.c_str(), exportData, exportCount);
+                }
+                else if (format == "pdf")
+                {
+                    exportSuccess = trie.exportToPDF(input.c_str(), exportData, exportCount);
+                }
+                else
+                {
+                    // Default to txt format
+                    exportSuccess = trie.exportResults(input.c_str(), exportData, exportCount);
+                }
+
+                if (exportSuccess)
+                {
+                    cout << "Results exported successfully to " << input << " in " << format << " format" << endl;
                 }
                 else
                 {
@@ -1099,19 +1298,50 @@ int main()
                 cout << "Enter filename to export history: ";
                 cin >> input;
 
-                FILE *file = fopen(input.c_str(), "w");
-                if (file)
+                string format;
+                cout << "Export format (txt/csv/pdf): ";
+                cin >> format;
+
+                // Prepare history data for export
+                char historyData[MAX_RESULTS][MAX_WORD_LENGTH];
+                int historyCount = 0;
+
+                for (int i = history.count - 1; i >= 0 && historyCount < MAX_RESULTS; i--)
                 {
-                    fprintf(file, "Search History\n");
-                    fprintf(file, "--------------------------------\n");
+                    sprintf(historyData[historyCount++], "Query %d: %s", history.count - i, history.queries[i]);
+                }
 
-                    for (int i = history.count - 1; i >= 0; i--)
+                bool exportSuccess = false;
+                if (format == "csv")
+                {
+                    exportSuccess = trie.exportToCSV(input.c_str(), historyData, historyCount);
+                }
+                else if (format == "pdf")
+                {
+                    exportSuccess = trie.exportToPDF(input.c_str(), historyData, historyCount);
+                }
+                else
+                {
+                    // Fallback to regular text file export
+                    FILE *file = fopen(input.c_str(), "w");
+                    if (file)
                     {
-                        fprintf(file, "%d. %s\n", history.count - i, history.queries[i]);
-                    }
+                        fprintf(file, "Search History\n");
+                        fprintf(file, "--------------------------------\n");
 
-                    fclose(file);
-                    cout << "History exported successfully to " << input << endl;
+                        for (int i = history.count - 1; i >= 0; i--)
+                        {
+                            fprintf(file, "%d. %s\n", history.count - i, history.queries[i]);
+                        }
+
+                        fclose(file);
+                        exportSuccess = true;
+                    }
+                }
+
+                if (exportSuccess)
+                {
+                    cout << "History exported successfully to " << input << " in " << format << " format" << endl;
                 }
                 else
                 {
@@ -1132,9 +1362,27 @@ int main()
                 string exportFile;
                 cin >> exportFile;
 
-                if (trie.exportResults(exportFile.c_str(), wordDetails, detailCount))
+                string format;
+                cout << "Export format (txt/csv/pdf): ";
+                cin >> format;
+
+                bool exportSuccess = false;
+                if (format == "csv")
                 {
-                    cout << "Word details exported successfully to " << exportFile << endl;
+                    exportSuccess = trie.exportToCSV(exportFile.c_str(), wordDetails, detailCount);
+                }
+                else if (format == "pdf")
+                {
+                    exportSuccess = trie.exportToPDF(exportFile.c_str(), wordDetails, detailCount);
+                }
+                else
+                {
+                    exportSuccess = trie.exportResults(exportFile.c_str(), wordDetails, detailCount);
+                }
+
+                if (exportSuccess)
+                {
+                    cout << "Word details exported successfully to " << exportFile << " in " << format << " format" << endl;
                 }
                 else
                 {
