@@ -14,6 +14,16 @@ A high-performance C++ implementation of a text search engine using Trie data st
 - **Search History**: Track and review past searches
 - **Export Results**: Save search results to files for later reference
 
+## Export Functionality
+
+The search engine supports exporting search results, word details, and search history in multiple formats:
+
+- **Text Files (.txt)**: Standard text format for easy reading
+- **CSV Files (.csv)**: Comma-separated values format for spreadsheet applications
+- **PDF Files (.pdf)**: Structured document format with proper headers and formatting
+
+All export functions automatically ensure the correct file extension is used based on the selected format.
+
 ## Implementation Details
 
 - Uses optimized Trie data structure for fast lookups
@@ -59,6 +69,16 @@ Mini Search Engine
 10. Exit
 Choice:
 ```
+
+## Export Example
+
+To export search results:
+1. Choose option 9 from the menu
+2. Select what to export (last search, history, or word details)
+3. Enter the filename (without extension)
+4. Choose the format (txt, csv, or pdf)
+
+The system will generate the file with the appropriate extension and formatting.
 
 ## Project Structure
 
