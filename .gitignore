@@ -38,3 +38,8 @@
 # Other
 *.log
 *.temp
+
+# Generated output files
+output.csv
+output.pdf
+output.txt
